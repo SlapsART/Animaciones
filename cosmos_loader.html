@@ -165,19 +165,6 @@ body,html{font-family:'Sora',sans-serif;}
     });
   }
 
-  let logoImg=null;
-  function buildLogoImg(cb){
-    const s=`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
-      <path fill="#2F43D0" d="M23.8506 10.1045C23.9489 10.7216 24 11.3538 24 11.998C24 12.4526 23.975 12.9028 23.9258 13.3438L15.9668 16.8047C15.4021 17.0506 15.0645 17.6034 15.0645 18.1816H15.0664C15.0664 18.3816 15.1065 18.5835 15.1895 18.7783C15.5202 19.5381 16.4043 19.8881 17.1641 19.5557L22.8779 17.0713C20.9683 21.1635 16.8127 24 11.998 24C8.15193 23.9999 4.72647 22.1893 2.53027 19.376L23.8506 10.1045Z"/>
-      <path fill="#2F43D0" d="M12.002 0C13.284 1.96775e-05 14.5205 0.202111 15.6787 0.575195L8.42969 3.72754C7.86523 3.97351 7.52838 4.52468 7.52832 5.10449C7.52832 5.30444 7.56841 5.5063 7.65137 5.70117C7.98207 6.46094 8.8662 6.80922 9.62598 6.47852L19.1279 2.3457C20.8102 3.59046 22.155 5.26408 23.0029 7.2041L0.988281 16.7764C0.788163 16.3185 0.6183 15.8464 0.477539 15.3613L13.998 9.4834C14.5626 9.23748 14.9003 8.68654 14.9004 8.1084C14.9004 7.90828 14.8595 7.70577 14.7764 7.51074C14.4456 6.7512 13.5614 6.40176 12.8018 6.73242L0.00488281 12.2969C0.00149489 12.1986 0 12.1003 0 12.002C3.02398e-06 5.3743 5.3743 0 12.002 0Z"/>
-    </svg>`;
-    const blob=new Blob([s],{type:'image/svg+xml'});
-    const url=URL.createObjectURL(blob);
-    const img=new Image();
-    img.onload=()=>{logoImg=img;URL.revokeObjectURL(url);cb();};
-    img.src=url;
-  }
-
   function cycleLabel(){
     const next=(labelIdx+1)%LABELS.length;
     labelEl.classList.add('exit-up');
@@ -233,7 +220,11 @@ body,html{font-family:'Sora',sans-serif;}
     return{i:SEQ.length-1,p:1};
   }
 
-  let raf,t0=null,svgVisible=false,lastPh=-1;
+  let raf,t0=null,lastPh=-1,svgSlideDone=false;
+
+  function setSvgOpacity(v){
+    svgWrap.style.opacity=v;
+  }
 
   function frame(ts){
     if(!t0)t0=ts;
@@ -241,42 +232,53 @@ body,html{font-family:'Sora',sans-serif;}
     const{i:ph,p:prog}=getSeq(el);
     const name=SEQ[ph].name;
 
-    if(ph===0&&lastPh===SEQ.length-1) svgVisible=false;
+    // Reset SVG state at cycle restart
+    if(ph===0&&lastPh===SEQ.length-1){
+      setSvgOpacity(0);
+      svgSlideDone=false;
+    }
+    // Trigger path slide-in once when xfade-in begins
+    if(name==='xfade-in'&&lastPh!==ph&&!svgSlideDone){
+      svgSlideDone=true;
+      svgSlideIn();
+    }
     lastPh=ph;
 
     ctx.clearRect(0,0,W,H);
 
     if(name==='orbit'){
+      setSvgOpacity(0);
       drawOrbitScene(t,0,1,1);
     }
     else if(name==='converge'){
+      setSvgOpacity(0);
       drawOrbitScene(t,easeInCubic(prog),1,1-easeInCubic(prog));
     }
     else if(name==='pulse'){
+      setSvgOpacity(0);
       drawRings(t,1); drawNucleus(1);
     }
     else if(name==='xfade-in'){
+      // Smooth crossfade: canvas fades out, SVG wrapper fades in — frame-driven, no abrupt cuts
       const e=easeOutCubic(prog);
       drawRings(t,1-e); drawNucleus(1-e);
-      if(logoImg){ ctx.globalAlpha=e; ctx.drawImage(logoImg,8,8,20,20); ctx.globalAlpha=1; }
-      if(prog>.6&&!svgVisible){
-        svgVisible=true; svgSlideIn();
-        setTimeout(()=>ctx.clearRect(0,0,W,H),100);
-      }
+      setSvgOpacity(e);
     }
-    else if(name==='hold'){}
+    else if(name==='hold'){
+      setSvgOpacity(1);
+    }
     else if(name==='xfade-out'){
-      if(svgVisible&&prog<.06){ svgVisible=false; svgSlideOut(()=>{}); }
-      const a=easeOutCubic(prog);
-      drawOrbitScene(t,0,a,a);
+      // SVG fades out during first half; orbit fades in across the full phase
+      const svgA=Math.max(0, 1-easeInCubic(Math.min(prog*2,1)));
+      setSvgOpacity(svgA);
+      const orbitA=easeOutCubic(prog);
+      drawOrbitScene(t,0,orbitA,orbitA);
     }
 
     raf=requestAnimationFrame(frame);
   }
 
-  buildLogoImg(()=>{
-    setInterval(cycleLabel,1800);
-    raf=requestAnimationFrame(frame);
-  });
+  setInterval(cycleLabel,1800);
+  raf=requestAnimationFrame(frame);
 })();
 </script>
